@@ -119,7 +119,7 @@ const views = periods.map((period) => {
         {deputy.fullName && deputy.fullName !== deputy.name && <p class="profile-full-name">{deputy.fullName}</p>}
         {official.bio && <p class="profile-bio">{official.bio}</p>}
         <p class="profile-demo-note">{official.coverage ? deputy.sourceLabel : 'Aguardando dados oficiais'}{official.fetchedAt && ` · Consultado em ${fetchedLabel(official.fetchedAt)}`}</p>
-        {source(official.sourceUrl) && <a class="profile-official-link" href={source(official.sourceUrl)!} target="_blank" rel="noopener noreferrer">Registro oficial do perfil ↗</a>}
+        {source(official.sourceUrl) && <a class="profile-official-link" href={source(official.sourceUrl)!} target="_blank" rel="noopener noreferrer">Fonte oficial do cadastro ↗</a>}
       </div>
     </div>
   </header>

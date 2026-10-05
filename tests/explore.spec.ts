@@ -68,7 +68,7 @@ test('profile period, tabs, keyboard, hash, history, and return link stay in syn
 test('official profile separates nominal votes, coauthored proposals, and unavailable amendments', async ({ page }) => {
   await page.goto(adrianaProfile);
   await expect(page.getByRole('heading', { name: 'Adriana Ventura', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Registro oficial do perfil' }).first()).toHaveAttribute('href', /^https:\/\//);
+  await expect(page.getByRole('link', { name: 'Fonte oficial do cadastro' }).first()).toHaveAttribute('href', /^https:\/\//);
   await expect(page.locator('.profile-summary-card').first()).toContainText('Votos nominais');
   await expect(page.locator('.profile-summary-card').nth(2)).toContainText('autoria ou coautoria');
 
