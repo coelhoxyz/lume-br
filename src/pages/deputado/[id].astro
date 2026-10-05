@@ -1,0 +1,12 @@
+---
+import { env } from 'cloudflare:workers';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import DeputyProfile from '../../components/DeputyProfile.astro';
+import { getDeputy } from '../../lib/repository';
+const deputy = await getDeputy(env.DB, Astro.params.id ?? '');
+if (!deputy) return Astro.rewrite('/404/');
+Astro.response.headers.set('Cache-Control', 'public, max-age=120, s-maxage=900');
+---
+<BaseLayout title={`${deputy.name} — Lume`} profile>
+  <main id="conteudo" class="container"><DeputyProfile deputy={deputy} /></main>
+</BaseLayout>

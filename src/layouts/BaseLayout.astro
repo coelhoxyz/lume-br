@@ -1,0 +1,72 @@
+---
+import '@fontsource-variable/inter';
+import '@fontsource-variable/sora';
+import '@fontsource-variable/jetbrains-mono';
+import '../styles/global.css';
+import Icon from '../components/Icon.astro';
+interface Props { title?: string; profile?: boolean; }
+const { title = 'Lume — Quem representa São Paulo', profile = false } = Astro.props;
+---
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Conheça os deputados federais de São Paulo: perfis, votos, despesas da cota e proposições, com fontes oficiais e cobertura explícita." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f8f9fc" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>{title}</title>
+    <script is:inline>
+      try {
+        const stored = localStorage.getItem('lume-theme');
+        document.documentElement.dataset.theme = stored === 'dark' || stored === 'light' ? stored : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      } catch { document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+      document.documentElement.classList.add('js');
+    </script>
+  </head>
+  <body>
+    <a href="#conteudo" class="skip-link">Pular para o conteúdo</a>
+    <header class="site-header">
+      <div class:list={['container', 'header-inner', { 'header-profile': profile }]}>
+        {profile && <a class="back-link" href="/" data-explore-link><Icon name="back" size={18} /><span>Explorar</span></a>}
+        <a href="/" class="brand" aria-label="Lume, página inicial"><Icon name="logo" size={27} /><span>Lume</span><span class="open-badge">open source</span></a>
+        <div class="header-actions">
+          <a href="/sobre/" class="demo-label"><span class="demo-dot"></span><span>Fontes oficiais <span class="demo-extra">· versão inicial</span></span></a>
+          <button type="button" class="icon-button theme-toggle" aria-label="Ativar tema escuro" title="Ativar tema escuro" hidden>
+            <Icon name="moon" class="moon-icon" /><Icon name="sun" class="sun-icon" />
+          </button>
+        </div>
+      </div>
+    </header>
+    <slot />
+    <footer class="site-footer container">
+      <a class="brand footer-brand" href="/"><Icon name="logo" size={21} /><span>Lume</span><span class="footer-tag">A vida pública, às claras.</span></a>
+      <div class="footer-links"><a href="/sobre/">Sobre os dados</a><span>Projeto independente. Dados públicos, com contexto.</span></div>
+    </footer>
+    <script>
+      const button = document.querySelector<HTMLButtonElement>('.theme-toggle');
+      const themeMedia = matchMedia('(prefers-color-scheme: dark)');
+      function syncTheme() {
+        const dark = document.documentElement.dataset.theme === 'dark';
+        const label = dark ? 'Ativar tema claro' : 'Ativar tema escuro';
+        button?.setAttribute('aria-label', label);
+        button?.setAttribute('title', label);
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#11121a' : '#f8f9fc');
+      }
+      if (button) button.hidden = false;
+      syncTheme();
+      button?.addEventListener('click', () => {
+        const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = theme;
+        try { localStorage.setItem('lume-theme', theme); } catch { /* Theme still works without storage. */ }
+        syncTheme();
+      });
+      themeMedia.addEventListener('change', ({ matches }) => {
+        try { if (localStorage.getItem('lume-theme')) return; } catch { /* Follow the system when storage is unavailable. */ }
+        document.documentElement.dataset.theme = matches ? 'dark' : 'light';
+        syncTheme();
+      });
+    </script>
+  </body>
+</html>

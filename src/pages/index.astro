@@ -1,0 +1,83 @@
+---
+import { env } from 'cloudflare:workers';
+import { listDeputies, expenseSummaries } from '../lib/repository';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Icon from '../components/Icon.astro';
+import { buildPeriods } from '../lib/data';
+import { money, shortDate } from '../lib/format';
+import '../styles/home.css';
+
+const periods = buildPeriods(new Date());
+const defaultPeriod = periods[0]!;
+const deputies = await listDeputies(env.DB);
+const summaries = await Promise.all(periods.map(period => expenseSummaries(env.DB, period)));
+const fetchedAt = deputies.map(deputy => deputy.fetchedAt).sort()[0];
+const parties = [...new Set(deputies.map(deputy => deputy.party))].sort((a,b) => a.localeCompare(b, 'pt-BR'));
+Astro.response.headers.set('Cache-Control', 'public, max-age=120, s-maxage=900');
+---
+<BaseLayout>
+  <main id="conteudo" class="container explore-page">
+    <section class="explore-hero" aria-labelledby="home-title">
+      <p class="eyebrow">Transparência parlamentar</p>
+      <h1 id="home-title">Quem representa<br /><span>São Paulo</span></h1>
+      <p class="hero-description">Conheça os deputados federais em exercício por SP. Como votam,<br class="desktop-break" /> quanto usam da cota e quais propostas apresentam.</p>
+      <div class="coverage-meta">
+        <span><Icon name="pin" size={14} />São Paulo · Câmara dos Deputados</span>
+        <span><Icon name="calendar" size={14} /><span data-period-caption>{defaultPeriod.label}</span></span>
+        <a href="/sobre/"><Icon name="shield" size={14} />Fontes e cobertura<Icon name="external" size={11} /></a>
+      </div>
+    </section>
+
+    <form class="filter-bar" role="search" aria-label="Encontrar deputados" data-filter-form>
+      <div class="search-field">
+        <Icon name="search" size={19} />
+        <label class="sr-only" for="deputy-search">Buscar por nome ou partido</label>
+        <input id="deputy-search" name="q" type="search" placeholder="Buscar por nome ou partido…" autocomplete="off" />
+      </div>
+      <div class="select-field party-field">
+        <label class="sr-only" for="party-filter">Partido</label>
+        <select id="party-filter" name="party"><option value="">Todos os partidos</option>{parties.map(party => <option value={party}>{party}</option>)}</select>
+        <Icon name="chevron" size={15} />
+      </div>
+      <div class="select-field period-field">
+        <label class="sr-only" for="period-filter">Período dos dados</label>
+        <select id="period-filter" name="period">{periods.map(({ id, label }) => <option value={id}>{label}</option>)}</select>
+        <Icon name="chevron" size={15} />
+      </div>
+    </form>
+    <noscript><p class="no-script-note">Busca e filtros precisam de JavaScript. Os perfis e o recorte de seis meses continuam disponíveis abaixo.</p></noscript>
+    <div class="results-toolbar">
+      <p role="status" aria-live="polite" aria-atomic="true" data-result-count><strong>{deputies.length}</strong> deputados <span>· {defaultPeriod.label}</span></p>
+      <button type="button" data-reset class="reset-filters" hidden>Limpar filtros<Icon name="close" size={13} /></button>
+    </div>
+
+    <section class="deputy-grid" aria-label="Deputados de São Paulo">
+      {deputies.map((deputy, index) => <article class="deputy-card" data-deputy-card data-name={`${deputy.name} ${deputy.fullName}`} data-party={deputy.party}>
+        <a href={`/deputado/${deputy.id}/`} data-profile-link aria-label={`Ver perfil de ${deputy.name}`}>
+          <div class="card-portrait">
+            <img src={deputy.photo} alt={`Retrato oficial de ${deputy.name}`} width="721" height="901" loading={index < 3 ? 'eager' : 'lazy'} decoding="async" fetchpriority={index === 0 ? 'high' : 'auto'} />
+            <span class="exercise-badge"><span></span>{deputy.status}</span>
+            <div class="portrait-meta"><span class="party-badge" style={`--party-color: ${deputy.partyColor}`}>{deputy.party}</span><span>SP</span></div>
+            <span class="card-open" aria-hidden="true"><Icon name="arrow" size={19} /></span>
+          </div>
+          <div class="card-body">
+            <h2>{deputy.name}</h2><p class="full-name">{deputy.fullName}</p>
+            {periods.map((period, periodIndex) => {
+              const summary = summaries[periodIndex]!.get(deputy.id);
+              return <div data-card-period={period.id} hidden={period.id !== defaultPeriod.id}>
+                <div class="card-expense">
+                  <div><p class="card-label">Despesa da cota {summary?.missingCount ? '· parcial' : ''}</p><strong class="mono">{summary ? money(summary.totalCents) : 'Aguardando dados'}</strong></div>
+                  <span class="month-indicator">{summary ? `${summary.count} registros` : 'Fonte em coleta'}</span>
+                </div>
+                <div class="card-activity"><div class="activity-label"><p class="card-label">Câmara dos Deputados</p><time datetime={deputy.fetchedAt}>{shortDate(deputy.fetchedAt.slice(0, 10))}</time></div><p>Ver votos, despesas e proposições<Icon name="arrow" size={14} /></p></div>
+              </div>;
+            })}
+          </div>
+        </a>
+      </article>)}
+    </section>
+    <div class="empty-results" data-empty hidden><div class="empty-icon"><Icon name="search" size={26} /></div><h2>Nenhum perfil encontrado</h2><p>Tente outro nome ou escolha um partido diferente.</p><button type="button" class="button" data-reset>Limpar filtros</button></div>
+    <div class="coverage-note"><Icon name="info" size={17} /><p><strong>{deputies.length} perfis oficiais em exercício por SP.</strong> Cadastro consultado em {fetchedAt ? new Intl.DateTimeFormat('pt-BR', {dateStyle: 'short', timeZone: 'America/Sao_Paulo'}).format(new Date(fetchedAt)) : 'data indisponível'}. Cada seção informa sua própria cobertura.</p><a href="/sobre/">Entenda os dados<Icon name="arrow" size={15} /></a></div>
+  </main>
+  <script src="../scripts/explore.ts"></script>
+</BaseLayout>

@@ -1,0 +1,6 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+Astro.response.status = 404;
+---
+<BaseLayout title="Página não encontrada — Lume"><main id="conteudo" class="container not-found"><p class="eyebrow">404 · Página não encontrada</p><h1>Este caminho ficou no escuro.</h1><p>Volte à lista para encontrar um perfil no Lume.</p><a href="/" class="button">Explorar deputados</a></main></BaseLayout>
+<style>.not-found { padding-block: 110px; text-align: center; }h1 { font-size: clamp(28px, 5vw, 46px); margin-block: 16px; }p:not(.eyebrow) { color: var(--muted); margin-bottom: 26px; }</style>

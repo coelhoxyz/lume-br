@@ -1,0 +1,21 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "lume-collector",
+  "main": "./index.ts",
+  "account_id": "d54ce5913ab4b95b80afbd6542801bad",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "limits": { "cpu_ms": 30000 },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "lume-db",
+    "database_id": "fba800f6-dfdd-4eb1-80f3-34f184f952ff",
+    "migrations_dir": "../../migrations"
+  }],
+  "r2_buckets": [{ "binding": "RAW", "bucket_name": "lume-source-data" }],
+  "queues": {
+    "producers": [{ "binding": "INGEST_QUEUE", "queue": "lume-ingest" }],
+    "consumers": [{ "queue": "lume-ingest", "max_batch_size": 1, "max_concurrency": 1, "max_retries": 3, "dead_letter_queue": "lume-ingest-dlq" }]
+  },
+  "triggers": { "crons": ["0 6 * * *"] }
+}

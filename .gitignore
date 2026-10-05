@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.astro/
+.playwright-mcp/
+.DS_Store
+.env
+.env.*
+!.env.example
+npm-debug.log*
+test-results/
+playwright-report/
+.wrangler/
+.dev.vars*
+worker-configuration.d.ts
+data-import/
+design/

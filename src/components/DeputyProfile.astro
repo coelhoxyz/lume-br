@@ -1,0 +1,210 @@
+---
+import type { Deputy, AmendmentAsOf, Period } from '../lib/data';
+import {
+  buildPeriods, selectExpenses, selectVotes, selectProposals, selectAmendments,
+  expenseTotalCents, expenseMonths, expenseCategories, sumKnown,
+} from '../lib/data';
+import { money, dateLabel, shortDate } from '../lib/format';
+import '../styles/profile.css';
+
+interface Props { deputy: Deputy }
+type Coverage = {
+  status: 'pending' | 'complete' | 'unavailable' | 'partial';
+  since: string | null;
+  until: string | null;
+  fetchedAt: string | null;
+  sourceUrl: string | null;
+  message?: string;
+};
+type Area = 'expenses' | 'votes' | 'proposals' | 'amendments';
+type CoverageState = 'complete' | 'partial' | 'unavailable';
+const { deputy } = Astro.props;
+const periods = buildPeriods(new Date());
+const defaultPeriod = periods[0]!;
+const official = deputy as Deputy & {
+  coverage?: Record<Area, Coverage>;
+  sourceUrl?: string | null;
+  fetchedAt?: string | null;
+  bio?: string | null;
+  mandate?: string | null;
+  status?: string | null;
+  photo?: string | null;
+};
+const exactMoney = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const formatExact = (cents: number | null) => cents === null ? 'Não informado' : exactMoney.format(cents / 100);
+const categoryColors = ['#6556ef', '#2b947b', '#bd8741', '#d35f8e', '#57657b', '#8b73e6'];
+const statusIsActive = /^(em )?exerc[ií]cio$/i.test(official.status ?? '');
+const stageLabels = ['Indicado', 'Empenhado', 'Liquidado', 'Pago'];
+const stageDetails = ['Valor indicado pelo parlamentar', 'Reservado ao compromisso', 'Objeto ou serviço verificado', 'Valor liberado ao credor'];
+const monthLabel = (iso: string) => new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso.slice(0, 7)}-01T12:00:00Z`));
+const fetchedLabel = (iso: string) => new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(iso));
+function source(url?: string | null): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' ? parsed.href : null;
+  } catch { return null; }
+}
+function state(area: Area, period: Period): CoverageState {
+  const coverage = official.coverage?.[area];
+  if (!coverage || coverage.status === 'pending' || coverage.status === 'unavailable') return 'unavailable';
+  const { since, until } = coverage;
+  if (!since || !until || since > period.end || until < period.start) return 'unavailable';
+  if (coverage.status === 'complete' && since <= period.start && until >= period.end) return 'complete';
+  return 'partial';
+}
+function statusText(value: CoverageState): string {
+  return value === 'complete' ? 'Cobertura completa neste período' : value === 'partial' ? 'Dados parciais' : 'Ainda não disponível';
+}
+function metric(count: number, value: CoverageState): string {
+  return value === 'complete' ? String(count) : value === 'partial' && count > 0 ? `${count}+` : 'Ainda não disponível';
+}
+function amendmentStatus(amendment: AmendmentAsOf): string {
+  const snapshot = amendment.latestSnapshot;
+  if (!snapshot) return 'Sem atualização';
+  if (amendment.indicatedCents > 0 && snapshot.paidCents !== null && snapshot.paidCents >= amendment.indicatedCents) return 'Pago integralmente';
+  if (snapshot.paidCents !== null && snapshot.paidCents > 0) return 'Pagamento parcial';
+  if (snapshot.liquidatedCents !== null && snapshot.liquidatedCents > 0) return 'Liquidado';
+  if (snapshot.committedCents !== null && snapshot.committedCents > 0) return 'Empenhado';
+  if ([snapshot.committedCents, snapshot.liquidatedCents, snapshot.paidCents].every((value) => value === null)) return 'Não informado';
+  return 'Execução não iniciada';
+}
+
+const views = periods.map((period) => {
+  const coverage = Object.fromEntries((['expenses', 'votes', 'proposals', 'amendments'] as Area[]).map((area) => [area, state(area, period)])) as Record<Area, CoverageState>;
+  const expenses = coverage.expenses === 'unavailable' ? [] : selectExpenses(deputy, period);
+  const votes = coverage.votes === 'unavailable' ? [] : selectVotes(deputy, period);
+  const proposals = coverage.proposals === 'unavailable' ? [] : selectProposals(deputy, period);
+  const amendments = coverage.amendments === 'unavailable' ? [] : selectAmendments(deputy, period.end);
+  const categories = expenseCategories(expenses);
+  const expenseTotal = expenseTotalCents(expenses);
+  const expenseMissing = sumKnown(expenses.map((expense) => expense.amountCents)).missingCount;
+  const hasNegativeExpense = expenses.some((expense) => expense.amountCents !== null && expense.amountCents < 0);
+  const months = expenseMonths(expenses, period);
+  const maxMonth = Math.max(...months.map((month) => month.totalCents), 1);
+  const stages = [
+    sumKnown(amendments.map((amendment) => amendment.indicatedCents)),
+    sumKnown(amendments.map((amendment) => amendment.latestSnapshot?.committedCents ?? null)),
+    sumKnown(amendments.map((amendment) => amendment.latestSnapshot?.liquidatedCents ?? null)),
+    sumKnown(amendments.map((amendment) => amendment.latestSnapshot?.paidCents ?? null)),
+  ];
+  const cityTotals = [...new Set(amendments.map((amendment) => amendment.city).filter(Boolean))].map((city) => ({
+    city, amount: amendments.filter((amendment) => amendment.city === city).reduce((total, amendment) => total + amendment.indicatedCents, 0),
+  }));
+  const activity = [
+    ...votes.map((vote) => ({ date: vote.date, kind: 'Voto', title: vote.title, description: `Voto individual: ${vote.position} · Resultado coletivo: ${vote.result}` })),
+    ...proposals.map((proposal) => ({ date: proposal.date, kind: 'Proposição', title: proposal.title, description: `${proposal.kind} · ${proposal.status}` })),
+  ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  let start = 0;
+  const gradient = expenseTotal > 0 ? `conic-gradient(${categories.map((category, index) => {
+    const from = start;
+    start += category.totalCents / expenseTotal * 100;
+    return `${categoryColors[index % categoryColors.length]} ${from}% ${start}%`;
+  }).join(', ')})` : '';
+  return { period, coverage, expenses, votes, proposals, amendments, categories, expenseTotal, expenseMissing, hasNegativeExpense, months, maxMonth, stages, cityTotals, activity, gradient };
+});
+---
+
+<div class="profile" data-profile data-default-period={defaultPeriod.id}>
+  <header class="profile-hero">
+    <div class="profile-hero-inner">
+      {official.photo ? <img class="profile-portrait" src={official.photo} alt="" width="260" height="325" /> : <div class="profile-portrait profile-portrait-empty" aria-hidden="true"></div>}
+      <div class="profile-identity">
+        <div class="profile-meta">
+          {deputy.party && <span class="profile-party" style={`--party-color:${deputy.partyColor}`}>{deputy.party}</span>}
+          <span class="profile-mandate">{deputy.state}{official.mandate && ` · ${official.mandate}`}</span>
+          {official.status && official.status !== 'Não informado' && <span class:list={['profile-status', !statusIsActive && 'is-neutral']}><span aria-hidden="true" class="profile-status-dot"></span>{official.status}</span>}
+        </div>
+        <h1>{deputy.name}</h1>
+        {deputy.fullName && deputy.fullName !== deputy.name && <p class="profile-full-name">{deputy.fullName}</p>}
+        {official.bio && <p class="profile-bio">{official.bio}</p>}
+        <p class="profile-demo-note">{official.coverage ? deputy.sourceLabel : 'Aguardando dados oficiais'}{official.fetchedAt && ` · Consultado em ${fetchedLabel(official.fetchedAt)}`}</p>
+        {source(official.sourceUrl) && <a class="profile-official-link" href={source(official.sourceUrl)!} target="_blank" rel="noopener noreferrer">Registro oficial do perfil ↗</a>}
+      </div>
+    </div>
+  </header>
+
+  <div class="profile-toolbar"><div class="profile-toolbar-inner">
+    <div class="profile-tabs" role="tablist" aria-label={`Dados de ${deputy.name}`}>
+      <button type="button" class="profile-tab is-active" role="tab" id="profile-tab-visao-geral" aria-controls="profile-panel-visao-geral" aria-selected="true" tabindex="0" data-tab="visao-geral">Visão geral</button>
+      <button type="button" class="profile-tab" role="tab" id="profile-tab-votos" aria-controls="profile-panel-votos" aria-selected="false" tabindex="-1" data-tab="votos">Votos</button>
+      <button type="button" class="profile-tab" role="tab" id="profile-tab-despesas" aria-controls="profile-panel-despesas" aria-selected="false" tabindex="-1" data-tab="despesas">Despesas</button>
+      <button type="button" class="profile-tab" role="tab" id="profile-tab-emendas" aria-controls="profile-panel-emendas" aria-selected="false" tabindex="-1" data-tab="emendas">Emendas</button>
+    </div>
+    <label class="profile-period-label">Período<select data-period-select aria-label="Período dos dados">{periods.map((period) => <option value={period.id} selected={period.id === defaultPeriod.id}>{period.label}</option>)}</select></label>
+  </div></div>
+
+  <div class="profile-main">
+    <section role="tabpanel" id="profile-panel-visao-geral" aria-labelledby="profile-tab-visao-geral" data-panel="visao-geral" tabindex="0">
+      {views.map((view) => <div data-period={view.period.id} hidden={view.period.id !== defaultPeriod.id}>
+        <div class="profile-section-heading"><div><h2>Resumo do período</h2><p>Registros de {view.period.label.toLowerCase()}. A cobertura varia entre as fontes.</p></div></div>
+        <div class="profile-summary-grid">
+          <div class="profile-summary-card"><span class="profile-eyebrow">Votos nominais</span><strong>{metric(view.votes.length, view.coverage.votes)}</strong><span>{statusText(view.coverage.votes)}{view.coverage.votes !== 'unavailable' && ` · ${view.votes.filter((vote) => vote.position !== 'Não informado').length} posições individuais`}</span></div>
+          <div class="profile-summary-card"><span class="profile-eyebrow">Despesas da cota</span><strong>{view.coverage.expenses === 'unavailable' || (view.coverage.expenses === 'partial' && view.expenses.length === 0) || (view.expenses.length > 0 && view.expenseMissing === view.expenses.length) ? 'Ainda não disponível' : formatExact(view.expenseTotal)}</strong><span>{view.coverage.expenses === 'partial' || view.expenseMissing > 0 ? `Soma parcial: ${view.expenseMissing} valor(es) não informado(s)` : view.coverage.expenses === 'complete' ? `${view.expenses.length} lançamentos no período` : 'Cobertura indisponível neste período'}</span></div>
+          <div class="profile-summary-card"><span class="profile-eyebrow">Proposições com autoria ou coautoria</span><strong>{metric(view.proposals.length, view.coverage.proposals)}</strong><span>{statusText(view.coverage.proposals)} · data de apresentação</span></div>
+        </div>
+        <div class="profile-activity-header"><h3>Atividades registradas</h3>{view.activity.length > 0 && <span>Último registro disponível: {shortDate(view.activity[0].date)}</span>}</div>
+        {view.activity.length > 0 ? <ol class="profile-activity-list">{view.activity.map((item) => <li><span class="profile-activity-dot" aria-hidden="true"></span><div><span class="profile-activity-date">{dateLabel(item.date)} · {item.kind}</span><strong>{item.title}</strong><p>{item.description}</p></div></li>)}</ol> : <p class="profile-empty">Ainda não há atividades disponíveis para este recorte. Consulte a cobertura de cada seção.</p>}
+        <div class="profile-overview-proposals"><div class="profile-activity-header"><h3>Proposições com autoria ou coautoria</h3><span>{view.coverage.proposals === 'complete' ? `${view.proposals.length} registros no período` : statusText(view.coverage.proposals)}</span></div>
+          {view.proposals.length > 0 ? <><p class="profile-context-note">Autoria ou coautoria atribuída pela fonte; período definido pela data de apresentação. Exibindo {Math.min(view.proposals.length, 50)} registros mais recentes de {view.proposals.length}{view.coverage.proposals === 'partial' && ' disponíveis; cobertura parcial'}.</p><div class="profile-proposal-grid">
+            {view.proposals.slice(0, 50).map((proposal) => <article class="profile-proposal-card"><span class="profile-eyebrow">{proposal.kind} · {proposal.code}</span><h4>{proposal.title}</h4>{proposal.summary && <p>{proposal.summary}</p>}<div><span>{dateLabel(proposal.date)}</span><span class="profile-proposal-status">{proposal.status}</span></div>{source(proposal.sourceUrl) && <a class="profile-record-link" href={source(proposal.sourceUrl)!} target="_blank" rel="noopener noreferrer">Ver registro na Câmara ↗</a>}</article>)}
+          </div></> : <p class="profile-empty">{view.coverage.proposals === 'complete' ? 'Nenhuma proposição registrada neste período.' : statusText(view.coverage.proposals)}</p>}
+          {source(official.coverage?.proposals?.sourceUrl) && <a class="profile-record-link" href={source(official.coverage?.proposals?.sourceUrl)!} target="_blank" rel="noopener noreferrer">Consultar a fonte de proposições ↗</a>}
+        </div>
+      </div>)}
+    </section>
+
+    <section role="tabpanel" id="profile-panel-votos" aria-labelledby="profile-tab-votos" data-panel="votos" tabindex="0" hidden>
+      {views.map((view) => <div data-period={view.period.id} hidden={view.period.id !== defaultPeriod.id}>
+        <div class="profile-section-heading"><div><h2>Votos nominais</h2><p>Registros da Câmara em Plenário e comissões. Posição individual e resultado coletivo são diferentes; esta contagem não mede presença.</p></div><span class="profile-count">{view.coverage.votes === 'complete' ? `${view.votes.length} registros` : statusText(view.coverage.votes)}</span></div>
+        {view.coverage.votes !== 'complete' && <p class="profile-coverage-note"><strong>{statusText(view.coverage.votes)}.</strong> {official.coverage?.votes?.message || 'A fonte ainda não cobre todo o período selecionado.'}</p>}
+        {view.votes.length > 0 ? <><p class="profile-context-note">Exibindo {Math.min(view.votes.length, 50)} registros mais recentes de {view.votes.length}{view.coverage.votes === 'partial' && ' disponíveis; cobertura parcial'}.</p><div class="profile-vote-list">
+          {view.votes.slice(0, 50).map((vote) => <details class="profile-vote-card"><summary><div class="profile-vote-main"><span class="profile-eyebrow">{vote.objectType} · <span class="mono">{vote.proposalCode}</span></span><strong>{vote.title}</strong><span class="profile-vote-date">{dateLabel(vote.date)}</span></div><div class="profile-vote-results"><span><small>Voto individual</small><b class:list={['profile-position', vote.position === 'Sim' && 'is-yes', vote.position === 'Não' && 'is-no', vote.position === 'Não informado' && 'is-unknown']}>{vote.position}</b></span><span><small>Resultado coletivo</small><b>{vote.result}</b></span></div><span class="profile-chevron" aria-hidden="true">⌄</span></summary><div class="profile-vote-detail">{vote.summary && <p>{vote.summary}</p>}<dl><div><dt>Situação do registro</dt><dd>{vote.status}</dd></div></dl>{source(vote.sourceUrl) && <a class="profile-record-link" href={source(vote.sourceUrl)!} target="_blank" rel="noopener noreferrer">Ver votação na Câmara ↗</a>}</div></details>)}
+        </div></> : <p class="profile-empty">{view.coverage.votes === 'complete' ? 'Nenhum voto nominal registrado neste período.' : statusText(view.coverage.votes)}</p>}
+        <p class="profile-context-note">A falta de posição individual não permite concluir presença ou ausência do parlamentar.</p>
+        {source(official.coverage?.votes?.sourceUrl) && <a class="profile-record-link" href={source(official.coverage?.votes?.sourceUrl)!} target="_blank" rel="noopener noreferrer">Consultar a fonte de votações ↗</a>}
+      </div>)}
+    </section>
+
+    <section role="tabpanel" id="profile-panel-despesas" aria-labelledby="profile-tab-despesas" data-panel="despesas" tabindex="0" hidden>
+      {views.map((view) => <div data-period={view.period.id} hidden={view.period.id !== defaultPeriod.id}>
+        <div class="profile-section-heading"><div><h2>Despesas da cota parlamentar</h2><p>Recursos da cota para a atividade parlamentar. Não representam o custo total do mandato.</p></div></div>
+        {view.coverage.expenses !== 'complete' && <p class="profile-coverage-note"><strong>{statusText(view.coverage.expenses)}.</strong> {official.coverage?.expenses?.message || 'A fonte ainda não cobre todo o período selecionado.'}</p>}
+        {view.coverage.expenses !== 'unavailable' && (view.expenses.length > 0 || view.coverage.expenses === 'complete') ? <>
+          <div class="profile-total-card"><span class="profile-eyebrow">{view.coverage.expenses === 'partial' || view.expenseMissing > 0 ? 'Soma dos valores conhecidos' : 'Total no período'} · {view.period.label}</span><strong>{view.expenses.length > 0 && view.expenseMissing === view.expenses.length ? 'Não informado' : formatExact(view.expenseTotal)}</strong><p>Cota parlamentar: verba para despesas do exercício do mandato, não remuneração pessoal. {view.expenses.length} lançamentos {view.coverage.expenses === 'partial' && 'disponíveis'}.{view.expenseMissing > 0 && ` ${view.expenseMissing} sem valor informado.`}</p></div>
+          {view.hasNegativeExpense && <p class="profile-context-note">Há ajustes negativos neste período. A distribuição visual foi omitida para não distorcer os valores líquidos.</p>}
+          {view.expenseTotal > 0 && !view.hasNegativeExpense && <div class="profile-chart-grid">
+            <section class="profile-chart-card" aria-label="Evolução mensal dos valores conhecidos, em reais"><h3>Evolução mensal <small>(R$)</small></h3><div class="profile-bars">{view.months.map((month) => <div class="profile-bar-item"><span class="profile-bar-value" title={`${formatExact(month.totalCents)}; ${month.missingCount} lançamento(s) sem valor`}>{month.totalCents === 0 && month.missingCount > 0 ? 's/d' : money(month.totalCents).replace(/^R\$\s*/, '')}{month.missingCount > 0 && month.totalCents > 0 && '*'}</span><div class="profile-bar-track"><span style={`height:${Math.round(month.totalCents / view.maxMonth * 100)}%`}></span></div><span class="profile-bar-month">{month.label}</span></div>)}</div>{view.expenseMissing > 0 && <p class="profile-context-note">* Soma parcial no mês. s/d: valor não informado.</p>}</section>
+            <section class="profile-chart-card"><h3>Distribuição por categoria</h3><div class="profile-category-layout"><div class="profile-donut" style={`background:${view.gradient}`} role="img" aria-label={`Valores conhecidos: ${formatExact(view.expenseTotal)} em ${view.categories.length} categorias`}><span>{view.categories.length}<small>categorias</small></span></div><ul class="profile-category-list">{view.categories.map((category, index) => <li><span class="profile-category-name"><i style={`background:${categoryColors[index % categoryColors.length]}`} aria-hidden="true"></i>{category.category}</span><strong>{category.missingCount === category.count ? 'Não informado' : formatExact(category.totalCents)}{category.missingCount > 0 && category.missingCount < category.count && ' · parcial'}</strong></li>)}</ul></div></section>
+          </div>}
+          {view.expenses.length > 0 && <section class="profile-table-card"><div class="profile-table-heading"><h3>Detalhes por fornecedor</h3><p>Exibindo {Math.min(view.expenses.length, 100)} lançamentos mais recentes de {view.expenses.length}. O valor acima considera todos os lançamentos disponíveis.</p></div><div class="profile-table-scroll" tabindex="0" role="region" aria-label="Lançamentos da cota parlamentar; role horizontalmente para ver todas as colunas"><table><thead><tr><th scope="col">Fornecedor</th><th scope="col">Categoria</th><th scope="col">Competência</th><th scope="col">Documento</th><th scope="col">Valor</th><th scope="col">Fonte</th></tr></thead><tbody>{view.expenses.slice(0, 100).map((expense) => {
+            const record = expense as typeof expense & { documentDate?: string | null; sourceUrl?: string | null; receiptUrl?: string | null };
+            return <tr><th scope="row">{expense.supplier}</th><td>{expense.category}</td><td>{monthLabel(expense.date)}</td><td class="mono">{record.documentDate ? shortDate(record.documentDate) : 'Não informado'}</td><td class="mono profile-amount">{formatExact(expense.amountCents)}</td><td>{source(record.sourceUrl) && <a class="profile-record-link" href={source(record.sourceUrl)!} target="_blank" rel="noopener noreferrer">Registro ↗</a>}{source(record.receiptUrl) && <a class="profile-record-link" href={source(record.receiptUrl)!} target="_blank" rel="noopener noreferrer">Comprovante ↗</a>}{!source(record.sourceUrl) && !source(record.receiptUrl) && 'Não disponível'}</td></tr>;
+          })}</tbody></table></div></section>}
+        </> : <p class="profile-empty">{statusText(view.coverage.expenses)}</p>}
+        {source(official.coverage?.expenses?.sourceUrl) && <a class="profile-record-link" href={source(official.coverage?.expenses?.sourceUrl)!} target="_blank" rel="noopener noreferrer">Consultar a fonte de despesas ↗</a>}
+      </div>)}
+    </section>
+
+    <section role="tabpanel" id="profile-panel-emendas" aria-labelledby="profile-tab-emendas" data-panel="emendas" tabindex="0" hidden>
+      {views.map((view) => <div data-period={view.period.id} hidden={view.period.id !== defaultPeriod.id}>
+        <div class="profile-section-heading"><div><h2>Emendas parlamentares</h2><p>Indicações e estágios de execução conhecidos até {dateLabel(view.period.end)}.</p></div></div>
+        {view.coverage.amendments !== 'complete' && <p class="profile-coverage-note"><strong>{statusText(view.coverage.amendments)}.</strong> {official.coverage?.amendments?.message || 'A fonte ainda não cobre todo o período selecionado.'}</p>}
+        {view.amendments.length > 0 ? <>
+          <section class="profile-stage-card"><p class="profile-context-note">Indicado, empenhado, liquidado e pago são etapas do mesmo recurso. Não devem ser somadas entre si. Pagamento não comprova a entrega da obra ou serviço.{view.coverage.amendments === 'partial' && ' Somas dos registros disponíveis; cobertura parcial.'}</p><div class="profile-stage-grid">{view.stages.map((stage, index) => <div class="profile-stage"><span class="profile-eyebrow"><i class={`profile-stage-dot stage-${index}`} aria-hidden="true"></i>{stageLabels[index]}</span><strong>{stage.missingCount === view.amendments.length ? 'Não informado' : money(stage.totalCents)}</strong><small>{stageDetails[index]}</small>{stage.missingCount > 0 && <em>{stage.missingCount} de {view.amendments.length} sem valor informado</em>}</div>)}</div></section>
+          {view.cityTotals.length > 0 && <div class="profile-destinations"><section class="profile-city-card"><h3>Destinos identificados</h3><p>{view.cityTotals.length} municípios citados nos registros disponíveis. Valores indicados, sem inferência sobre execução local.</p><div class="profile-city-list">{view.cityTotals.map((city) => <div><span>{city.city}</span><strong class="mono">{money(city.amount)}</strong></div>)}</div></section></div>}
+          <div class="profile-amendments-header"><h3>{view.coverage.amendments === 'complete' ? 'Emendas registradas' : 'Emendas disponíveis'} ({view.amendments.length})</h3><span>Posição em {dateLabel(view.period.end)}</span></div>
+          <div class="profile-amendments-list">{view.amendments.map((amendment) => {
+            const record = amendment as typeof amendment & { sourceUrl?: string | null };
+            return <article class="profile-amendment-card"><div class="profile-amendment-top"><div><h4>{amendment.purpose}</h4><p>{amendment.beneficiary} · {amendment.city} · {amendment.year}</p></div><span class="profile-amendment-status">{amendmentStatus(amendment)}</span></div><div class="profile-amendment-values"><div><span class="profile-eyebrow">Indicado</span><strong>{money(amendment.indicatedCents)}</strong></div><div><span class="profile-eyebrow">Empenhado</span><strong>{money(amendment.latestSnapshot?.committedCents ?? null)}</strong></div><div><span class="profile-eyebrow">Liquidado</span><strong>{money(amendment.latestSnapshot?.liquidatedCents ?? null)}</strong></div><div><span class="profile-eyebrow">Pago</span><strong>{money(amendment.latestSnapshot?.paidCents ?? null)}</strong></div></div><p class="profile-amendment-updated">{amendment.latestSnapshot ? `Última atualização: ${dateLabel(amendment.latestSnapshot.date)}` : 'Sem atualização neste recorte'}</p>{source(record.sourceUrl) && <a class="profile-record-link" href={source(record.sourceUrl)!} target="_blank" rel="noopener noreferrer">Ver registro na fonte ↗</a>}</article>;
+          })}</div>
+        </> : <p class="profile-empty">{view.coverage.amendments === 'complete' ? 'Nenhuma emenda registrada nesta cobertura.' : statusText(view.coverage.amendments)}</p>}
+        {source(official.coverage?.amendments?.sourceUrl) && <a class="profile-record-link" href={source(official.coverage?.amendments?.sourceUrl)!} target="_blank" rel="noopener noreferrer">Consultar a fonte de emendas ↗</a>}
+      </div>)}
+    </section>
+  </div>
+  <div class="profile-source"><span>{official.coverage ? deputy.sourceLabel : 'Aguardando dados oficiais'}{official.fetchedAt && ` · Perfil consultado em ${fetchedLabel(official.fetchedAt)}`}</span>{source(official.sourceUrl) && <a href={source(official.sourceUrl)!} target="_blank" rel="noopener noreferrer">Registro oficial do perfil ↗</a>}</div>
+</div>
+
+<noscript><style>.profile-tabs,.profile-period-label{display:none}.profile [data-panel][hidden]{display:block!important}</style></noscript>
+<script>import '../scripts/profile.ts';</script>

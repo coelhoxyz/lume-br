@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lume-web",
+  "account_id": "d54ce5913ab4b95b80afbd6542801bad",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "binding": "ASSETS", "directory": "./dist/client" },
+  "d1_databases": [{
+    "binding": "DB", "database_name": "lume-db",
+    "database_id": "fba800f6-dfdd-4eb1-80f3-34f184f952ff", "migrations_dir": "migrations"
+  }],
+  "r2_buckets": [{ "binding": "RAW", "bucket_name": "lume-source-data" }],
+  "version_metadata": { "binding": "VERSION" },
+  "vars": { "RELEASE_COMMIT": "development" },
+  "observability": { "enabled": true }
+}

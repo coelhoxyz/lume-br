@@ -1,0 +1,42 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Icon from '../components/Icon.astro';
+---
+<BaseLayout title="Sobre os dados — Lume" profile>
+  <main id="conteudo" class="container about-page">
+    <p class="eyebrow">A vida pública, às claras</p>
+    <h1>Os dados também<br />precisam de contexto.</h1>
+    <p class="about-lead">O Lume aproxima os registros públicos de quem é representado. A cobertura começa pelos deputados federais em exercício por São Paulo, incluindo titulares e suplentes presentes na relação oficial da Câmara.</p>
+    <aside class="demo-notice"><Icon name="info" size={23} /><div><h2>Dados oficiais, cobertura explícita</h2><p>Perfis, despesas da cota, votações e proposições vêm dos arquivos públicos da Câmara dos Deputados. A integração de emendas ainda está pendente. Se uma fonte falhar, o Lume preserva a última coleta válida e informa a data.</p></div></aside>
+    <section><h2>O que cada número significa</h2><div class="meaning-grid">
+      <article><span class="about-number">01</span><h3>Votos</h3><p>A posição individual e o resultado coletivo aparecem separados. Um registro sem voto informado não prova ausência do parlamentar.</p></article>
+      <article><span class="about-number">02</span><h3>Despesas</h3><p>Os valores líquidos, incluindo estornos, são agrupados pelo mês de competência informado pela Câmara. A data do documento aparece separadamente. Não são salário nem o custo total do mandato.</p></article>
+      <article><span class="about-number">03</span><h3>Emendas</h3><p>A integração com o Portal da Transparência ainda está pendente. Quando disponíveis, os estágios de execução serão mostrados separadamente. Ausência de dados não significa zero.</p></article>
+    </div></section>
+    <section class="about-two-column"><div><h2>Período e cobertura</h2><p>Os filtros abrangem os últimos seis, três ou um mês completo. Votações e proposições usam a data do registro; a cota usa competência. Uma coleta completa significa que o arquivo oficial foi lido até o fim, não que a Câmara deixou de receber retificações.</p><p>As votações incluem registros nominais do Plenário e das comissões presentes no arquivo oficial. Proposições incluem autoria e coautoria com data de apresentação no período. Não há ranking ou julgamento automático da atuação parlamentar.</p><p>“Não informado” é diferente de zero. Cada seção mostra cobertura e data da coleta. A filiação partidária exibida é a do cadastro atual, não necessariamente a da data de cada voto.</p></div><div><h2>Conferir nas fontes</h2><p>O cadastro vem do serviço público de deputados em exercício. Despesas e atividade legislativa usam os arquivos de dados abertos da Câmara; os originais de cada coleta são preservados.</p><a class="source-link" href="https://www.camara.leg.br/SitCamaraWS/Deputados.asmx/ObterDeputados" target="_blank" rel="noopener noreferrer">Cadastro de deputados em exercício<Icon name="external" size={16} /></a><a class="source-link" href="https://dadosabertos.camara.leg.br/swagger/api.html?tab=staticfile" target="_blank" rel="noopener noreferrer">Arquivos oficiais da Câmara<Icon name="external" size={16} /></a><a class="source-link" href="https://portaldatransparencia.gov.br/emendas/consulta" target="_blank" rel="noopener noreferrer">Portal da Transparência · emendas<Icon name="external" size={16} /></a></div></section>
+    <section class="about-scope"><h2>Começar com um recorte claro.</h2><p>A cobertura atual é a Câmara dos Deputados, pelo estado de São Paulo. Deputados estaduais, Senado, municípios e atos do Diário Oficial serão recortes próprios. A proposta mais ampla do Lume é permitir acompanhar o que muda na vida pública, sempre com a origem do registro.</p><a href="/" class="button">Explorar os deputados<Icon name="arrow" size={16} /></a></section>
+  </main>
+</BaseLayout>
+<style>
+  .about-page { max-width: 1000px; padding-top: 65px; }
+  h1 { font-size: clamp(34px, 5vw, 55px); line-height: 1.13; letter-spacing: -.065em; margin: 12px 0 24px; }
+  .about-lead { max-width: 680px; font-size: 17px; line-height: 1.8; color: var(--muted); }
+  .demo-notice { margin: 38px 0 48px; padding: 24px; display: flex; gap: 16px; background: var(--accent-soft); border-radius: 16px; }
+  .demo-notice > svg { color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+  .demo-notice h2 { color: var(--accent); font-size: 17px; margin-bottom: 8px; }
+  p { color: var(--muted); line-height: 1.8; }
+  h2 { font-size: 24px; margin-bottom: 20px; }
+  .meaning-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .meaning-grid article { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 26px; }
+  .about-number { display: block; font-family: 'JetBrains Mono Variable', monospace; color: var(--accent); font-size: 12px; margin-bottom: 20px; }
+  h3 { font-size: 18px; margin-bottom: 10px; }
+  .meaning-grid p { font-size: 13px; }
+  .about-two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; margin-block: 50px; }
+  .about-two-column h2 { font-size: 21px; }
+  .about-two-column p + p { margin-top: 12px; }
+  .source-link { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--accent); margin-top: 18px; }
+  .about-scope { border-top: 1px solid var(--line); padding-top: 34px; }
+  .about-scope p { max-width: 740px; }
+  .about-scope .button { margin-top: 24px; }
+  @media(max-width: 650px) { .about-page { padding-top: 38px; } .meaning-grid, .about-two-column { grid-template-columns: 1fr; } .about-two-column { gap: 30px; } .demo-notice { padding: 20px; } .about-lead { font-size: 15px; } }
+</style>
